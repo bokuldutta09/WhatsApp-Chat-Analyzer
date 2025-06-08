@@ -12,20 +12,15 @@ import emoji
 def fetch_stats(selected_user, df):
     if selected_user != "Overall":
         df = df[df['user'] == selected_user]
-
-    # Number of messages
     num_messages = df.shape[0]
 
-    # Number of words
     words = []
     for message in df['message']:
         words.extend(message.split())
 
-    # Number of media messages
     media_keywords = ['image omitted', 'video omitted', 'audio omitted']
     num_media_message = df[df['message'].str.lower().isin(media_keywords)].shape[0]
 
-    # Number of links shared
     links = []
     for message in df['message']:
         links.extend(extract.find_urls(message))
@@ -53,7 +48,7 @@ def create_word_cloud( selected_user ,df):
         stop_words = set(f.read().splitlines())
 
     def clean_message(msg):
-        msg = re.sub(r'[^\w\s]', '', msg)  # remove punctuation
+        msg = re.sub(r'[^\w\s]', '', msg)
         msg = msg.lower().strip()
         return ' '.join([word for word in msg.split() if word not in stop_words])
 
@@ -77,7 +72,7 @@ def most_common_words(selected_user, df):
     temp = df[df['user'] != "group_notification"]
 
     def clean_text(msg):
-        msg = re.sub(r'[^\w\s]', '', msg)  # remove punctuation
+        msg = re.sub(r'[^\w\s]', '', msg) 
         return msg.strip().lower()
 
     media_omitted = ['image omitted', 'video omitted', 'audio omitted', 'document omitted', 'sticker omitted']
@@ -93,7 +88,6 @@ def most_common_words(selected_user, df):
 
     most_common_df = pd.DataFrame(Counter(words).most_common(20))
     return most_common_df
-
 
 
 
@@ -157,33 +151,3 @@ def activity_heatmap(selected_user, df):
 
     return user_heatmap
 
-
-
-
-
-
-
-
-
-
-
-
-
-    # if selected_user == "Overall":
-    #     # 1. Number of messages
-    #     num_messages = df.shape[0]
-    #
-    #     # 2. number of words
-    #     words = []
-    #     for message in df['message']:
-    #         words.extend(message.split())
-    #
-    #     return num_messages, len(words)
-    #
-    # else:
-    #     new_df = df[df['user'] == selected_user]
-    #     num_messages = new_df.shape[0]
-    #     words = []
-    #     for message in new_df['message']:
-    #         words.extend(message.split())
-    #     return num_messages, len(words)
