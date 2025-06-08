@@ -3,8 +3,6 @@ import preprocessor, helper
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-
-
 from helper import most_common_words
 
 st.set_page_config(
@@ -12,18 +10,14 @@ st.set_page_config(
     page_icon="🚀"
 )
 
-
 st.sidebar.title("Whatsapp Chat Analyzer")
 
 uploaded_file = st.sidebar.file_uploader("Choose a file", type=["txt"])
 if uploaded_file is not None:
     bytes_data = uploaded_file.getvalue()
     data = bytes_data.decode("utf-8")
-    # st.text(data)
     df = preprocessor.preprocess(data)
 
-
-    # Remove group notification
     def is_group_notification(msg):
         patterns = [
             "added", "removed", "changed the subject to",
@@ -32,14 +26,8 @@ if uploaded_file is not None:
             "deleted this message", "removed this message"
         ]
         return any(p in msg.lower() for p in patterns)
-
-    # Drop rows that are group notifications
     df = df[df['user'].notnull() & ~df['message'].apply(is_group_notification)]
 
-
-    # st.dataframe(df)
-
-    # Fetch unique user
     user_list = df['user'].unique().tolist()
     user_list.sort()
     user_list.insert(0, 'Overall')
@@ -48,7 +36,6 @@ if uploaded_file is not None:
 
     if st.sidebar.button("Show Analysis"):
 
-        # Stats Area
         num_messages, words, num_media_message, num_links = helper.fetch_stats(selected_user, df)
 
         st.title("Top Statistics")
@@ -67,7 +54,6 @@ if uploaded_file is not None:
             st.header("links Shared")
             st.title(num_links)
 
-        # Monthly timeline
         st.title("Monthly Timeline")
         timeline = helper.monthly_timeline(selected_user, df)
         fig,ax = plt.subplots()
@@ -75,7 +61,6 @@ if uploaded_file is not None:
         plt.xticks(rotation='vertical')
         st.pyplot(fig)
 
-        # Daily Timeline
         st.title("Daily Timeline")
         daily_timeline = helper.daily_timeline(selected_user, df)
         fig, ax = plt.subplots()
@@ -83,7 +68,6 @@ if uploaded_file is not None:
         plt.xticks(rotation='vertical')
         st.pyplot(fig)
 
-        # Activity week map
         st.title("Activity Map")
         col1, col2 = st.columns(2)
 
@@ -103,8 +87,6 @@ if uploaded_file is not None:
             plt.xticks(rotation='vertical')
             st.pyplot(fig)
 
-
-        # Heatmap
         st.title("Weekly activity map")
         user_heatmap = helper.activity_heatmap(selected_user, df)
         fig, ax = plt.subplots()
@@ -112,8 +94,6 @@ if uploaded_file is not None:
         st.pyplot(fig)
 
 
-
-        # Finding the busiest users in the group(Group level)
         if selected_user == 'Overall':
             st.title("Most Busy User")
 
@@ -129,8 +109,6 @@ if uploaded_file is not None:
                 st.dataframe(percent_df)
 
 
-
-        #WordCloud
         st.title("WordCloud")
         df_wc = helper.create_word_cloud(selected_user, df)
         fig, ax = plt.subplots()
@@ -138,18 +116,14 @@ if uploaded_file is not None:
         st.pyplot(fig)
 
 
-        #Most Common words
         st.title("Most Common Words")
         most_common_df = helper.most_common_words(selected_user, df)
-        # st.dataframe(most_common_df)
         fig, ax = plt.subplots()
         ax.barh(most_common_df[0], most_common_df[1])
         plt.xticks(rotation='vertical')
         st.pyplot(fig)
 
 
-
-        # Emoji analysis
         st.title("Emoji Analysis")
         emoji_df = helper.emoji_helper(selected_user, df)
 
