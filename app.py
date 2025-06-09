@@ -38,12 +38,10 @@ if uploaded_file is not None:
     # st.dataframe(df)
 
     # Fetch unique user
-    user_list = df['user'].unique().tolist()
+    df = df[df['user'] != 'group_notification']
     if 'messages and calls are end-to-end encrypted' in df.iloc[0]['message'].lower():
-        possible_group_name = df.iloc[0]['user']
-        if possible_group_name in user_list:
-            user_list.remove(possible_group_name)
-
+        df = df.drop(df.index[0]).reset_index(drop=True)
+    user_list = df['user'].unique().tolist()
     user_list.sort()
     user_list.insert(0, 'Overall')
     selected_user = st.sidebar.selectbox("Show analysis wrt", user_list)
