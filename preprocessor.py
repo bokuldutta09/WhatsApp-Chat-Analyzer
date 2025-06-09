@@ -1,6 +1,7 @@
 import re
 import pandas as pd
 import unicodedata
+from datetime import datetime
 
 def clean_message(msg):
     if isinstance(msg, str):
@@ -9,56 +10,68 @@ def clean_message(msg):
         return msg.strip()
     return msg
 
-
 def preprocess(data):
-    android_pattern = r'(\d{2}/\d{2}/\d{2,4}), (\d{2}:\d{2}) - (.*?): (.*)'
-    iphone_pattern = r'\[*(\d{2}/\d{2}/\d{2,4}), (\d{2}:\d{2}:\d{2})\]\s?(.*?): (.+)'
+    android_pattern = re.compile(
+        r'^(\d{1,2}/\d{1,2}/\d{2,4}),?\s+(\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM|am|pm)?)\s*-\s+(.*?):\s(.*)$'
+    )
 
-    android_matches = re.findall(android_pattern, data)
-    iphone_matches = re.findall(iphone_pattern, data)
+    ios_pattern = re.compile(
+        r'\[(\d{2}/\d{2}/\d{2,4}), (\d{2}:\d{2}:\d{2})\] (.*?): (.+)'
+    )
 
-    if iphone_matches:
-        format_type = 'iphone'
-        matches = iphone_matches
-    elif android_matches:
-        format_type = 'android'
-        matches = android_matches
-    else:
-        raise ValueError("Chat format not recognized")
-
-    datetime_list = []
-    name_message_list = []
-
-
-    for match in matches:
-        date, time, name, message = match
-        datetime = f"{date} {time}"
-        name_message = f"{name}: {message}"
-
-        datetime_list.append(datetime)
-        name_message_list.append(name_message)
-
-    df = pd.DataFrame({'user_message': name_message_list, 'message_date': datetime_list})
-
-    date_format = '%d/%m/%y %H:%M:%S' if format_type == 'iphone' else '%d/%m/%y %H:%M'
-    df['message_date'] = pd.to_datetime(df['message_date'], format=date_format, errors='coerce')
-    df.rename(columns={'message_date': 'date'}, inplace=True)
-
-    users = []
     messages = []
-    for message in df['user_message']:
-        entry = re.split('([\w\W]+?):\s', message)
-        if entry[1:]:
-            users.append(entry[1])
-            messages.append(entry[2])
+    current_message = None
+    for line in data.split('\n'):
+        line = line.strip()
+        if ios_pattern.match(line) or android_pattern.match(line):
+            if current_message:
+                messages.append(current_message)
+            current_message = line
         else:
-            users.append('group_notification')
-            messages.append(entry[0])
+            if current_message:
+                current_message += ' ' + line 
+            else:
+                continue
 
-    df['user'] = users
-    df['message'] = messages
+    if current_message:
+        messages.append(current_message)
+        
+    dates, users, texts = [], [], []
+    
+    for message in messages:
+        ios_match = ios_pattern.match(message)
+        android_match = android_pattern.match(message)
+        if ios_match:
+            date_str, time_str, user, text = ios_match.groups()
+            datetime_str = f"{date_str} {time_str}"
+            dates.append(datetime_str)
+            users.append(user)
+            texts.append(text)
+        elif android_match:
+            date_str, time_str, user, text = android_match.groups()
+            datetime_str = f"{date_str} {time_str}"
+            dates.append(datetime_str)
+            users.append(user)
+            texts.append(text)
+        else:
+            dates.append(None)
+            users.append('group_notification')
+            texts.append(message)
+
+    df = pd.DataFrame({'datetime': dates, 'user': users, 'message': texts})
+    
+    def try_parsing_datetime(s):
+        for fmt in ("%d/%m/%Y %I:%M:%S %p", "%d/%m/%Y %H:%M:%S", "%d/%m/%y %H:%M:%S", "%d/%m/%Y %I:%M %p",
+                    "%d/%m/%Y %H:%M"):
+            try:
+                return pd.to_datetime(s, format=fmt, dayfirst=True)
+            except:
+                pass
+        return pd.to_datetime(s, dayfirst=True, errors='coerce', infer_datetime_format=True)
+
+    df['date'] = df['datetime'].apply(try_parsing_datetime)
+    df = df.dropna(subset=['date'])
     df['message'] = df['message'].apply(clean_message)
-    df.drop(columns=['user_message'], inplace=True)
     df['only_date'] = df['date'].dt.date
     df['year'] = df['date'].dt.year
     df['month_num'] = df['date'].dt.month
@@ -67,17 +80,13 @@ def preprocess(data):
     df['hour'] = df['date'].dt.hour
     df['minute'] = df['date'].dt.minute
     df['day_name'] = df['date'].dt.day_name()
-
-
     period = []
     for hour in df['hour']:
-        if hour == 23:
-            period.append("23-00")
-        elif hour == 0:
-            period.append("00-01")
+        if pd.isna(hour):
+            period.append("Unknown")
         else:
+            hour = int(hour)
             period.append(f"{hour:02d}-{(hour + 1) % 24:02d}")
     df['period'] = period
-
-
+    df.drop(columns=['datetime'], inplace=True)
     return df
