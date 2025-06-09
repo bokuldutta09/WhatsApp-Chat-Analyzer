@@ -1,4 +1,3 @@
-from streamlit import columns
 from urlextract import URLExtract
 from wordcloud import WordCloud
 import pandas as pd
@@ -8,126 +7,118 @@ import emoji
 
 extract = URLExtract()
 
+def clean_messages(df):
+    media_pattern = re.compile(r"<media omitted>|image omitted|video omitted|audio omitted|document omitted|message deleted|message edited|This message was deleted", re.I)
+    df_clean = df[~df['message'].str.contains(media_pattern)]
+    df_clean = df_clean[~df_clean['message'].str.contains("This message was deleted|deleted message", case=False)]
+    df_clean = df_clean[df_clean['message'].str.contains(r'[a-zA-Z]', regex=True)]
+    df_clean = df_clean.reset_index(drop=True)
+    return df_clean
+
+# Fetch chat statistics
 def fetch_stats(selected_user, df):
     if selected_user != "Overall":
         df = df[df['user'] == selected_user]
-
     num_messages = df.shape[0]
-
     words = []
     for message in df['message']:
         words.extend(message.split())
-
-    media_keywords = ['<media omitted>', 'image omitted', 'video omitted', 'audio omitted']
-    num_media_message = df[df['message'].str.lower().isin(media_keywords)].shape[0]
-
+    media_patterns = r'(<media omitted>|image omitted|video omitted|audio omitted|document omitted|sticker omitted|message deleted|message edited|This message was deleted)'
+    num_media_message = df[df['message'].str.lower().str.contains(media_patterns, na=False)].shape[0]
     links = []
     for message in df['message']:
         links.extend(extract.find_urls(message))
     return num_messages, len(words), num_media_message, len(links)
 
-
-
+# Most busy users
 def most_busy_user(df):
+    df = df[df['user'] != 'group_notification']
+    if 'messages and calls are end-to-end encrypted' in df.iloc[0]['message'].lower():
+        df = df.drop(df.index[0])
     x = df['user'].value_counts().head()
-    percent_df = round((df['user'].value_counts()/df.shape[0])*100, 2).reset_index()
+    percent_df = round((df['user'].value_counts() / df.shape[0]) * 100, 2).reset_index()
     percent_df.columns = ['name', 'percent']
     return x, percent_df
 
-
-
-def create_word_cloud( selected_user ,df):
+# Create WordCloud
+def create_word_cloud(selected_user, df):
     if selected_user != "Overall":
         df = df[df['user'] == selected_user]
-
     df = df[df['user'] != "group_notification"]
-    media_omitted = [ '<media omitted>', 'image omitted', 'video omitted', 'audio omitted', 'document omitted', 'sticker omitted']
-    df = df[~df['message'].str.lower().str.strip().isin(media_omitted)]
+    media_patterns = r'<media omitted>|image omitted|video omitted|audio omitted|document omitted|sticker omitted|sticker|deleted message|message deleted|message deleted|message edited|This message was deleted'
+    df = df[~df['message'].str.lower().str.strip().str.contains(media_patterns, regex=True)]
     with open('stop_hinglish.txt', 'r') as f:
         stop_words = set(f.read().splitlines())
-        
-    def clean_message(msg):
-        msg = re.sub(r'[^\w\s]', '', msg)
-        msg = msg.lower().strip()
-        return ' '.join([word for word in msg.split() if word not in stop_words])
-    cleaned_text = df['message'].apply(clean_message).str.cat(sep=' ')
-    wc = WordCloud(width=500, height=500, background_color='white')
-    df_wc = wc.generate(df['message'].str.cat(sep=" "))
-    return df_wc
-
+    user_list = set(u.lower() for u in df['user'].unique())
+    cleaned_words = []
+    for message in df['message']:
+        message = re.sub(r'[^\w\s]', '', message)
+        for word in message.lower().split():
+            if word not in stop_words and word not in user_list:
+                cleaned_words.append(word)
+    cleaned_text = ' '.join(cleaned_words)
+    wc = WordCloud(width=500, height=500, background_color='white').generate(cleaned_text)
+    return wc
 
 
 def most_common_words(selected_user, df):
-    f = open('stop_hinglish.txt', 'r')
-    stop_words = f.read()
+    with open('stop_hinglish.txt', 'r') as f:
+        stop_words = set(f.read().splitlines())
     if selected_user != "Overall":
         df = df[df['user'] == selected_user]
     temp = df[df['user'] != "group_notification"]
-
-    def clean_text(msg):
-        msg = re.sub(r'[^\w\s]', '', msg)
-        return msg.strip().lower()
-    media_omitted = ['<media omitted>', 'image omitted', 'video omitted', 'audio omitted', 'document omitted', 'sticker omitted']
-    temp = temp[~temp['message'].str.lower().str.strip().isin(media_omitted)]
-
-
+    media_patterns = r'<media omitted>|image omitted|video omitted|audio omitted|document omitted|sticker omitted|sticker|deleted message|message deleted|message deleted|message edited|This message was deleted'
+    temp = temp[~temp['message'].str.lower().str.strip().str.contains(media_patterns, regex=True)]
+    user_list = set(u.lower() for u in df['user'].unique())
     words = []
     for message in temp['message']:
-        message = clean_text(message)
+        # Remove punctuation
+        message = re.sub(r'[^\w\s]', '', message)
         for word in message.lower().split():
-            if word not in stop_words:
+            if word not in stop_words and word not in user_list:
                 words.append(word)
-    most_common_df = pd.DataFrame(Counter(words).most_common(20))
+    most_common_df = pd.DataFrame(Counter(words).most_common(20), columns=['word', 'count'])
     return most_common_df
 
-
-
-
+# Emoji Analysis
 def emoji_helper(selected_user, df):
     if selected_user != "Overall":
         df = df[df['user'] == selected_user]
     emojis = []
     for message in df['message']:
         emojis.extend([c for c in message if emoji.is_emoji(c)])
-    emoji_df = pd.DataFrame(Counter(emojis).most_common(len(Counter(emojis))))
+    emoji_df = pd.DataFrame(Counter(emojis).most_common(), columns=['emoji', 'count'])
     return emoji_df
 
-
-
+# Monthly timeline
 def monthly_timeline(selected_user, df):
     if selected_user != "Overall":
         df = df[df['user'] == selected_user]
+    if df.empty:
+        return pd.DataFrame()
+        
     timeline = df.groupby(['year', 'month_num', 'month']).count()['message'].reset_index()
-    time = []
-    for i in range(timeline.shape[0]):
-        time.append(timeline['month'][i] + "-" + str(timeline['year'][i]))
-    timeline['time']  = time
+    timeline['time'] = timeline['month'] + "-" + timeline['year'].astype(str)
     return timeline
 
-
-
+# Daily timeline
 def daily_timeline(selected_user, df):
     if selected_user != "Overall":
         df = df[df['user'] == selected_user]
-    daily_timeline = df.groupby(['only_date']).count()['message'].reset_index()
-    return daily_timeline
+    return df.groupby('only_date').count()['message'].reset_index()
 
-
-
+# Activity maps
 def week_activity_map(selected_user, df):
     if selected_user != "Overall":
         df = df[df['user'] == selected_user]
     return df['day_name'].value_counts()
-
 
 def month_activity_map(selected_user, df):
     if selected_user != "Overall":
         df = df[df['user'] == selected_user]
     return df['month'].value_counts()
 
-
 def activity_heatmap(selected_user, df):
     if selected_user != "Overall":
         df = df[df['user'] == selected_user]
-    user_heatmap = df.pivot_table(index='day_name', columns='period', values='message', aggfunc='count').fillna(0)
-    return user_heatmap
+    return df.pivot_table(index='day_name', columns='period', values='message', aggfunc='count').fillna(0)
