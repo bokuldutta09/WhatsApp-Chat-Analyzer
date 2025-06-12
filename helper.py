@@ -2,6 +2,7 @@ from urlextract import URLExtract
 from wordcloud import WordCloud
 import pandas as pd
 from collections import Counter
+from datetime import datetime
 import re
 import emoji
 
@@ -96,6 +97,8 @@ def monthly_timeline(selected_user, df):
         df = df[df['user'] == selected_user]
     if df.empty:
         return pd.DataFrame()
+    today = datetime.today()
+    df = df[df['date'] <= today]
         
     timeline = df.groupby(['year', 'month_num', 'month']).count()['message'].reset_index()
     timeline['time'] = timeline['month'] + "-" + timeline['year'].astype(str)
@@ -105,6 +108,8 @@ def monthly_timeline(selected_user, df):
 def daily_timeline(selected_user, df):
     if selected_user != "Overall":
         df = df[df['user'] == selected_user]
+    today = datetime.today()
+    df = df[df['date'] <= today]
     return df.groupby('only_date').count()['message'].reset_index()
 
 # Activity maps
